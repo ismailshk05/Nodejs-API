@@ -17,23 +17,23 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const uploadFile = multer({ storage: storage });
 
 
 // POST endpoint for generating ID cards
-router.post('/', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'signature', maxCount: 1 }]), async (req, res) => {
+router.post('/', uploadFile.fields([{ name: 'photo', maxCount: 1 }, { name: 'signature', maxCount: 1 }]), async (req, res) => {
   try {
     const { photo, signature } = req.files;
 
-    // Check if files are present or not
+    // Check if files are present in req
     if (!photo || !signature) {
       return res.status(400).json({ error: 'Both photo and signature files are required.' });
     }
 
-    // Function for fetching random student data from the Random User Generator API
+    // Function to fetch random student information from  Random User Generator API
     async function fetchRandomStudentData() {
-      const response = await fetch('https://randomuser.me/api/?results=10');
-      const data = await response.json();
+      const responseUserResponse = await fetch('https://randomuser.me/api/?results=30');
+      const data = await responseUserResponse.json();
       return data.results;
     }
 
@@ -41,7 +41,7 @@ router.post('/', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'signatu
     const studentsData = await fetchRandomStudentData();
 
     // Generating ID cards as PDF files with photo, signature, and student data
-    const students = [];
+    const studentsArr = [];
 
     for (let i = 0; i < studentsData.length; i++) {
       const student = studentsData[i];
@@ -51,7 +51,7 @@ router.post('/', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'signatu
 
       doc.pipe(stream);
 
-      // Adding student information to ID card
+      // Adding student information into ID card
       doc.fontSize(16).text(`Name: ${student.name.first} ${student.name.last}`, { align: 'left' });
       doc.fontSize(16).text(`ID: ${i + 1}`, { align: 'left' });
       doc.image(photo[0].path, 100, 100, { width: 200 });
@@ -59,7 +59,7 @@ router.post('/', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'signatu
 
       doc.end();
 
-      // Save student data into our MongoDB using the our Student Interface/model
+      // Saving student data into our MongoDB using the our Student Interface/model
       const newStudent = new Student({
         studentId: `STU-${i + 1}`,
         name: `${student.name.first} ${student.name.last}`,
@@ -69,9 +69,9 @@ router.post('/', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'signatu
       });
       await newStudent.save();
 
-      students.push({ id: i + 1, name: `${student.name.first} ${student.name.last}`, filePath: filePath , studentId: `STU-${i + 1}`});
+      studentsArr.push({ id: i + 1, name: `${student.name.first} ${student.name.last}`, filePath: filePath , studentId: `STU-${i + 1}`});
     }
-    res.status(200).json({ status: 'success', data: students });
+    res.status(200).json({ status: 'success', data: studentsArr });
   } catch (error) {
     console.error('Error generating ID cards:', error);
     res.status(500).json({ status: 'error' , data:  'Internal Server Error'});
