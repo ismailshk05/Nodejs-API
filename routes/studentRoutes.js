@@ -1,80 +1,85 @@
 const express = require('express');
-const router = express.Router();
-const multer = require('multer');
-const fs = require('fs');
-const PDFDocument = require('pdfkit');
-const Student = require('../models/students'); 
 const cors = require('cors');
+const router = express.Router();
+const PDFDocument = require('pdfkit');
+const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
+
+// Enable CORS for all routes
 router.use(cors());
 
-// Configuring Multer for file upload
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, './uploads');
-  },
-  filename: function (req, file, cb) {
-    cb(null, file.originalname);
-  }
-});
-
-const uploadFile = multer({ storage: storage });
-
-
-// POST endpoint for generating ID cards
-router.post('/', uploadFile.fields([{ name: 'photo', maxCount: 1 }, { name: 'signature', maxCount: 1 }]), async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const { photo, signature } = req.files;
+    // Fetch random user data
+    const randomUsersResponse = await fetch('https://randomuser.me/api/?results=30');
+    if (!randomUsersResponse.ok) {
+      throw new Error('Failed to fetch random user data');
+    }
+    const { results } = await randomUsersResponse.json();
 
-    // Check if files are present in req
-    if (!photo || !signature) {
-      return res.status(400).json({ error: 'Both photo and signature files are required.' });
+    // Creating a PDF document
+    const doc = new PDFDocument();
+    const buffers = [];
+
+    // Adjusting smaller page size
+    const cardWidth = 400;
+    const cardHeight = 200;
+    doc.page.width = cardWidth;
+    doc.page.height = cardHeight;
+
+    // Calculating center offsets for X & Y 
+    const xOffset = (doc.page.width - cardWidth) / 2;
+    const yOffset = (doc.page.height - cardHeight) / 2;
+
+    // Looping through each random user data
+    for (const user of results) {
+      // Add a new page for each user
+      doc.addPage();
+
+      // Placing background Image for ID card
+      const backgroundImgPath = path.join(__dirname, '..', 'background.png');
+      doc.image(backgroundImgPath, 0, 0, { width: cardWidth, height: cardHeight });
+
+      // Placing Logo Image & setting height & width
+      const logoImgPath = path.join(__dirname, '..', 'logo.png');
+      doc.image(logoImgPath, xOffset + 25, yOffset + 25, { width: 50 });
+
+      // Adding User information
+      doc.fontSize(10).text(`Name: ${user.name.first} ${user.name.last}`, xOffset + 100, yOffset + 50);
+      doc.fontSize(10).text(`Email: ${user.email}`, xOffset + 100, yOffset + 70);
+      doc.fontSize(10).text(`Gender: ${user.gender}`, xOffset + 100, yOffset + 90);
+      doc.fontSize(10).text(`Location: ${user.location.city}, ${user.location.country}`, xOffset + 100, yOffset + 110);
+
+      // Placing Profile picture on ID Card
+      const photoImgResponse = await fetch(user.picture.large);
+      if (!photoImgResponse.ok) {
+        throw new Error('Failed to fetch profile picture');
+      }
+      const photoImgBuffer = await photoImgResponse.buffer();
+      doc.image(photoImgBuffer, xOffset + 280, yOffset + 40, { width: 100 });
     }
 
-    // Function to fetch random student information from  Random User Generator API
-    async function fetchRandomStudentData() {
-      const responseUserResponse = await fetch('https://randomuser.me/api/?results=30');
-      const data = await responseUserResponse.json();
-      return data.results;
-    }
+      // Geting buffers Data
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+      const pdfBuffer = Buffer.concat(buffers);
 
-    // Fetch random student data
-    const studentsData = await fetchRandomStudentData();
+      // Writing our PDF buffer to  a file
+      const filePath = path.join(__dirname, '..', 'id-cards', 'random_users_id_cards.pdf');
+      fs.writeFileSync(filePath, pdfBuffer);
 
-    // Generating ID cards as PDF files with photo, signature, and student data
-    const studentsArr = [];
+      // Sending the PDF in the response
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename=random_users_id_cards.pdf');
+      res.send(pdfBuffer);
+    });
+    doc.end();
 
-    for (let i = 0; i < studentsData.length; i++) {
-      const student = studentsData[i];
-      const doc = new PDFDocument();
-      const filePath = `./id-cards/student_${student.name.first}_${i + 1}.pdf`;
-      const stream = fs.createWriteStream(filePath);
-
-      doc.pipe(stream);
-
-      // Adding student information into ID card
-      doc.fontSize(16).text(`Name: ${student.name.first} ${student.name.last}`, { align: 'left' });
-      doc.fontSize(16).text(`ID: ${i + 1}`, { align: 'left' });
-      doc.image(photo[0].path, 100, 100, { width: 200 });
-      doc.image(signature[0].path, 100, 300, { width: 200 });
-
-      doc.end();
-
-      // Saving student data into our MongoDB using the our Student Interface/model
-      const newStudent = new Student({
-        studentId: `STU-${i + 1}`,
-        name: `${student.name.first} ${student.name.last}`,
-        photoPath: photo[0].path,
-        signaturePath: signature[0].path,
-        pdfPath: filePath
-      });
-      await newStudent.save();
-
-      studentsArr.push({ id: i + 1, name: `${student.name.first} ${student.name.last}`, filePath: filePath , studentId: `STU-${i + 1}`});
-    }
-    res.status(200).json({ status: 'success', data: studentsArr });
   } catch (error) {
+    // Handling Error
     console.error('Error generating ID cards:', error);
-    res.status(500).json({ status: 'error' , data:  'Internal Server Error'});
+    res.status(500).json({ status: 'error', message: error.message || 'Internal Server Error' });
   }
 });
 
