@@ -43,7 +43,10 @@ router.get('/', async (req, res) => {
 
       // Placing Logo Image & setting height & width
       const logoImgPath = path.join(__dirname, '..', 'logo.png');
-      doc.image(logoImgPath, xOffset + 25, yOffset + 25, { width: 50 });
+      doc.image(logoImgPath, xOffset + 25, yOffset + 25, { width: 60 });
+
+      const instituteName = 'EduLabs Technologies';
+      doc.fontSize(20).text(instituteName, xOffset + 100, yOffset + 10, { align: 'top' });
 
       // Adding User information
       doc.fontSize(10).text(`Name: ${user.name.first} ${user.name.last}`, xOffset + 100, yOffset + 50);
