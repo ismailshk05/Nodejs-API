@@ -68,6 +68,12 @@ router.get('/', async (req, res) => {
       doc.on('end', () => {
       const pdfBuffer = Buffer.concat(buffers);
 
+      // Checking the output directory exists
+      const outputDir = path.join(__dirname, '..', 'id-cards');
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+
       // Writing our PDF buffer to  a file
       const filePath = path.join(__dirname, '..', 'id-cards', 'random_users_id_cards.pdf');
       fs.writeFileSync(filePath, pdfBuffer);
